@@ -1,0 +1,119 @@
+---
+title: "Workshop example"
+output: html_document
+date: "2025-01-12"
+---
+
+## Load data
+
+```{r, message=FALSE, warning=FALSE}
+library(readr)
+library(ggplot2)
+library(patchwork)
+df <- read_csv("df_sample2.csv")
+head(df)
+```
+
+## Visualize - clustering labels
+
+```{r}
+label_vars <- paste0("method", seq_len(8))
+
+plots <- lapply(label_vars, function(var){
+  ggplot(df, 
+         aes(x=imagerow, y=imagecol,
+             color=factor(.data[[var]]))) +
+    geom_point() + 
+    theme_void() + 
+    scale_x_reverse(expand = c(0,0)) +
+    theme(legend.position="none") + 
+    labs(color = "", title = var)
+})
+
+wrap_plots(plots, ncol = 4)
+```
+
+## Visualize - manual annotation
+
+```{r, fig.width=2, fig.height=3}
+ggplot(df,
+       aes(x=imagerow, y=imagecol,
+             color=factor(manual_annotation))) +
+    geom_point() + 
+    theme_void() + 
+    scale_x_reverse(expand = c(0,0)) +
+    theme(legend.position="none") + 
+    labs(color = "", title = "Manual annotation")
+```
+
+## Calculate metrics
+
+### load packages
+
+```{r, message=FALSE, warning=FALSE}
+library(clevr)
+library(aricode)
+library(tidyr)
+library(dplyr)
+```
+
+#### If you are running this locally:
+
+```{r, message=FALSE, warning=FALSE }
+# if (!requireNamespace("BiocManager", quietly = TRUE)) {
+#   install.packages("BiocManager")
+# }
+# BiocManager::install("poem")
+library(poem)
+```
+
+#### If you are using WebR:
+
+```{r}
+# Specify the URL for the folder in the GitHub repository
+base_url <- "https://raw.githubusercontent.com/RoseYuan/poem/devel/R/"
+# Source the script
+scripts <- c("getPartitionMetrics.R", "getPartitionClassMetrics.R",
+             "getPartitionGlobalMetrics.R", "utils.R", "metrics.R") 
+for (script in scripts) {
+  source(paste0(base_url, script))
+}
+```
+
+### Calculate metrics
+
+```{r}
+results <- lapply(label_vars, function(var){
+  data <- getPartitionMetrics(true = factor(df[["manual_annotation"]]),
+                              pred = factor(df[[var]]),
+                              metrics = c("ARI", "WC", "WH", "NCR"),
+                              level = "dataset")
+  data$method <- var  
+  return(data)
+})
+
+# Combine the list of data frames into one data frame
+combined_results <- bind_rows(results)
+combined_results
+
+# Reshape to long format for ggplot2
+long_results <- combined_results %>%
+  pivot_longer(cols = -method, names_to = "metric", values_to = "value")
+```
+
+
+### Visualize
+
+```{r}
+# Generate 8 distinct colors
+color_palette <- RColorBrewer::brewer.pal(n = 8, name = "Set2")
+
+ggplot(long_results, aes(x = metric, y = value, color = method, group = method)) +
+  geom_line(size = 1) + 
+  geom_point(size = 2) +  
+  labs(title = "", x = "Metric", y = "Metric Value") +
+  theme_minimal() +
+  theme(legend.title = element_blank()) + 
+  scale_color_manual(values = color_palette)  
+
+```
